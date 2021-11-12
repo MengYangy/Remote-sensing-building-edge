@@ -156,6 +156,12 @@ class ResNeXt():
         out = leak_relu(out)
         return out
 
+    def change_conv(self, conv, f_size, k_size, name):
+        out = Conv2D(filters=f_size, kernel_size=k_size, name=name)(conv)
+        out = BatchNormalization()(out)
+        out = leak_relu(out)
+        return out
+
     def call(self, input_tensor):
         if self.layers_num == 50:
             layers_num = [3, 4, 6, 3]
@@ -200,10 +206,23 @@ class ResNeXt():
         #
         # model = Model(input_tensor, x)
         # return model
+        conv1 = self.change_conv(conv1, f_size=self.Filter_size, k_size=1, name='Conv1')
+        conv2 = self.change_conv(conv2, f_size=self.Filter_size * 2, k_size=1, name='Conv2')
+        conv3 = self.change_conv(conv3, f_size=self.Filter_size * 4, k_size=1, name='Conv3')
+        conv4 = self.change_conv(conv4, f_size=self.Filter_size * 8, k_size=1, name='Conv4')
+        conv5 = self.change_conv(conv5, f_size=self.Filter_size * 16, k_size=1, name='Conv5')
+
         return conv1, conv2, conv3, conv4, conv5
 
 
-# if __name__ == '__main__':
-#     resnext = ResNeXt(layers_num=50)
-#     model = resnext.call()
-#     model.summary()
+if __name__ == '__main__':
+    inputs = Input((512,512,3))
+    resnext = ResNeXt(layers_num=50)
+    conv1, conv2, conv3, conv4, conv5 = resnext.call(inputs)
+    model = Model(inputs, conv5)
+    model.summary()
+    print(conv1)
+    print(conv2)
+    print(conv3)
+    print(conv4)
+    print(conv5)

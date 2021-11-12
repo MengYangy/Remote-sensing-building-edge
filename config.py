@@ -1,4 +1,4 @@
-Filter_Size = 16
+Filter_Size = 32
 Batch_Size = 2
 
 # 输入图像大小
