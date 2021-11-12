@@ -8,18 +8,16 @@ from tensorflow.keras.layers import Conv2D,BatchNormalization,MaxPool2D, \
 from tensorflow.keras.models import Model
 from config import *
 from backbone.resNet import ResNetFamily
+from backbone.resnext import ResNeXt
 
 from edge_fusion_method import Edge_Fusion_Method
-
-
-def leak_relu1(x, alpha=0.1):
-    return tf.nn.leaky_relu(x, alpha=alpha)
+from uility.activate import leak_relu
 
 
 def conv_bn_relu(input_tensor, f_size, k_size=3, s=1):
     x1 = Conv2D(f_size, kernel_size=(k_size,k_size),strides=s, padding='same')(input_tensor)
     bn1 = BatchNormalization()(x1)
-    relu1 = leak_relu1(bn1)
+    relu1 = leak_relu(bn1)
     return relu1
 
 def block(input_tensor):
@@ -186,7 +184,9 @@ def myModel(backbone='resnet'):
     if backbone == 'resnet':
         res = ResNetFamily(f_size=Filter_Size)
         conv1, conv2, conv3, conv4, conv5 = res.res50(input_tensor)
-
+    elif backbone == 'resnext50':
+        resnext = ResNeXt(layers_num=50, f_size=Filter_Size)
+        conv1, conv2, conv3, conv4, conv5 = resnext.call(input_tensor)
     else:
         raise ValueError('Not find this backbone!')
 

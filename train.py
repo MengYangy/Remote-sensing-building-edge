@@ -32,7 +32,7 @@ if __name__ == '__main__':
     build_loss = Build_Loss()
     recall = Recall()
 
-    model = myModel(backbone='resnet')
+    model = myModel(backbone='resnext50')
     model.summary()
 
     # model.compile(optimizer='Adam', loss=build_loss,

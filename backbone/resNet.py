@@ -4,10 +4,8 @@ import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, MaxPool2D, Conv2DTranspose, BatchNormalization, \
     Input, Activation, Add
 from tensorflow.keras.models import Model
+from uility.activate import leak_relu
 
-
-def leak_relu(x, alpha=0.1, name=''):
-    return tf.nn.leaky_relu(x, alpha=alpha, name=name)
 
 class ResNetFamily():
     def __init__(self, input_shape=(512,512,3), f_size=64):
