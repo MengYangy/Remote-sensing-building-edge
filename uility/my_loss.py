@@ -45,19 +45,19 @@ class Edge_Loss_V2(tf.keras.losses.Loss):
         ed_pred = tf.cast(y_pred, tf.float32)
 
         # 提取建筑物边缘，作为正样本
-        build_edge_bin = tf.multiply(tf.where(ed_true < 10, 1.0, 0), tf.where(ed_true > 0, 1.0, 0))
+        build_edge_bin = tf.multiply(tf.where(ed_true < 10, 1.0, 0.0), tf.where(ed_true > 0, 1.0, 0))
         build_edge_true = tf.multiply(build_edge_bin, ed_true)
         edge_pixel_num_true = K.sum(build_edge_bin)
         edge_pixel_num_true = tf.cast(edge_pixel_num_true, tf.float32)
 
         # 提取背景边缘，作为负样本
-        background_edge_bin = tf.where(ed_true > 10, 0.1, 0)  # 把负样本中的30，40，50 变为3，4，5
-        background_edge_true = tf.multiply(background_edge_bin, ed_true)
+        background_edge_bin = tf.where(ed_true > 10, 1.0, 0.0)  # 把负样本中的30，40，50 变为3，4，5
+        background_edge_true = tf.multiply(background_edge_bin, tf.divide(ed_true, 10.0))
         edge_pixel_num_false = K.sum(background_edge_bin) * 10.0
         edge_pixel_num_false = tf.cast(edge_pixel_num_false, tf.float32)
 
         # 正样本的权重 β， 负样本权重 1-β
-        edge_pixel_num = edge_pixel_num_true + edge_pixel_num_false  # + 1.0
+        edge_pixel_num = edge_pixel_num_true + edge_pixel_num_false  + 1.0
         beta = edge_pixel_num_true / edge_pixel_num
 
 
@@ -69,16 +69,19 @@ class Edge_Loss_V2(tf.keras.losses.Loss):
         y*log(1+e^(-|x|)) - min(x, 0)
         '''
         build_loss = tf.subtract(
-            tf.multiply(tf.where(build_edge_true>0., 1.0, 0.),
+            tf.multiply(build_edge_bin,
                         tf.math.log1p(tf.math.exp(-tf.math.abs(ed_pred)))),
             tf.minimum(ed_pred, 0)
         )
+        build_loss = tf.multiply(tf.cast(build_edge_true, tf.float32), build_loss)
+
 
         background_loss = tf.add(
-            tf.multiply(tf.where(background_edge_true>0., 1., 0.),
+            tf.multiply(background_edge_bin,
                         tf.math.log1p(tf.math.exp(-tf.math.abs(ed_pred)))),
             tf.maximum(ed_pred, 0)
         )
+        background_loss = tf.multiply(tf.cast(background_edge_true, tf.float32), background_loss)
 
         '''
         loss = β * build_edge_loss / edge_pixel_num_true 
@@ -89,6 +92,10 @@ class Edge_Loss_V2(tf.keras.losses.Loss):
                     tf.multiply(tf.subtract(1.0, beta),
                                 tf.divide(tf.reduce_sum(background_loss),
                                           edge_pixel_num_false)))
+        # edge_loss = tf.add(tf.multiply(beta, build_loss),
+        #                    tf.multiply((1.0 - beta), background_loss))
+
+        # tf.print(tf.reshape(background_loss, (128,128)), summarize=-1)
         return edge_loss
 
 
@@ -112,9 +119,8 @@ class Edge_Loss_V3(tf.keras.losses.Loss):
         background_edge_true = tf.multiply(background_edge_bin, ed_true)
         edge_pixel_num_false = K.sum(background_edge_bin) * 10.0
         edge_pixel_num_false = tf.cast(edge_pixel_num_false, tf.float32)
-
         # 正样本的权重 β， 负样本权重 1-β
-        edge_pixel_num = edge_pixel_num_true + edge_pixel_num_false  # + 1.0
+        edge_pixel_num = edge_pixel_num_true + edge_pixel_num_false + 1.0
         beta = edge_pixel_num_true / edge_pixel_num
 
         print(build_edge_true)
@@ -153,6 +159,8 @@ class Build_Loss(tf.keras.losses.Loss):
     def call(self, y_true, y_pred):
         build_true = y_true[:,:,:,0:1]
         build_pred = y_pred
+        # tf.print(build_true.shape, build_true)
+        # tf.print(y_pred.shape, y_pred)
         loss = tf.maximum(build_pred, 0) - \
                tf.multiply(build_true, build_pred) + \
                tf.math.log1p(tf.math.exp(-tf.math.abs(build_pred)))

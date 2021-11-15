@@ -58,9 +58,18 @@ def short_concat_conv(input_tensor1, input_tensor2, f_size):
     input_tensor2 = transpose(input_tensor2, f_size)
     conv = tf.concat([input_tensor1, input_tensor2], axis=-1)
     conv = conv_bn_relu(conv, f_size, k_size=1)
-    conv = conv_bn_relu(conv, f_size)
-    conv = conv_bn_relu(conv, f_size)
+    conv = res_block(conv, f_size)
+    # conv = conv_bn_relu(conv, f_size)
     return conv
+
+def res_block(input_tensor, f_size):
+    out = Conv2D(filters=f_size,
+                 kernel_size=(3, 3),
+                 padding='same')(input_tensor)
+    out = BatchNormalization()(out)
+    out = leak_relu(out)
+    out = Add()([input_tensor, out])
+    return out
 
 
 def decode(conv1,conv2,conv3,conv4,conv5):
@@ -168,12 +177,10 @@ def edge_feature1(conv1_1, conv2_1, conv3_1):
     return pred, edge_pred1, edge_pred2, edge_pred3
 
 
-def pred_module(build_pred, edge_pred1, edge_pred2, edge_pred3):
+def pred_module(build_pred, edge_pred):
     build_pred = Conv2D(1, 3, padding='same', name='build_pred')(build_pred)
-    edge_pred3 = pred_layer(edge_pred3, name='edge_pred3')
-    edge_pred2 = pred_layer(edge_pred2, name='edge_pred2')
-    edge_pred1 = pred_layer(edge_pred1, name='edge_pred1')
-    return build_pred, edge_pred1, edge_pred2, edge_pred3
+    edge_pred = Conv2D(1, 3, padding='same', name='edge_pred')(edge_pred)
+    return build_pred, edge_pred
 
 
 def myModel(backbone='resnet'):
@@ -182,10 +189,10 @@ def myModel(backbone='resnet'):
     # 更换主干网络
     # conv1,conv2,conv3,conv4,conv5 = encode(input_tensor)
     if backbone == 'resnet':
-        res = ResNetFamily(f_size=Filter_Size)
-        conv1, conv2, conv3, conv4, conv5 = res.res50(input_tensor)
+        resnet = ResNetFamily(f_size=64, layer_num=50)
+        conv1, conv2, conv3, conv4, conv5 = resnet.resnet_n(input_tensor)
     elif backbone == 'resnext50':
-        resnext = ResNeXt(layers_num=50, f_size=Filter_Size)
+        resnext = ResNeXt(layers_num=50, f_size=Filter_Size, cardinality=8)
         conv1, conv2, conv3, conv4, conv5 = resnext.call(input_tensor)
     else:
         raise ValueError('Not find this backbone!')
@@ -196,10 +203,11 @@ def myModel(backbone='resnet'):
 
     # 建筑物和边缘提取特征
     edge_fusion_ = Edge_Fusion_Method()
-    pred = edge_fusion_.call(conv1_1, conv2_1, conv3_1)
-    build_pred = tf.concat([conv1_1, pred], axis=-1)
+    build_tensor, edge_tensor = edge_fusion_.call(conv1_1, conv2_1, conv3_1)
+
+    build_pred = tf.concat([conv1_1, build_tensor], axis=-1)
     build_pred = conv_bn_relu(build_pred, Filter_Size)
-    build_pred, edge_pred,_,_ = pred_module(build_pred, pred, pred, pred)
+    build_pred, edge_pred = pred_module(build_pred, edge_tensor)
     model = Model(input_tensor, [build_pred, edge_pred])
     return model
 

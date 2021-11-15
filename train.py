@@ -32,19 +32,19 @@ if __name__ == '__main__':
     build_loss = Build_Loss()
     recall = Recall()
 
-    model = myModel(backbone='resnext50')
-    model.summary()
+    model = myModel(backbone='resnet')
+    # model.summary()
 
     # model.compile(optimizer='Adam', loss=build_loss,
     #               metrics=['accuracy'])
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.0005),
                   loss={'build_pred':build_loss,
-                        "edge_pred1":edge_loss,
+                        "edge_pred":edge_loss,
                         # "edge_pred2":edge_loss,
                         # "edge_pred3":edge_loss
                         },
                   loss_weights={'build_pred':1,
-                        "edge_pred1":1,
+                        "edge_pred":1,
                         # "edge_pred2":0.3,
                         # "edge_pred3":0.2
                                 },

@@ -4,6 +4,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import tensorflow as tf
 from config import *
 import numpy as np
+import cv2 as cv
 import math
 
 
@@ -81,85 +82,70 @@ def load_val_func():
 
 # 使用tf.keras.utils.Sequence创建数据生成器
 class Load_data(tf.keras.utils.Sequence):
-    def __init__(self, dataset_type):
-        super(Load_data, self).__init__()
-
-        self.img_path = IMAGE_PATH if dataset_type == 'train' else VAL_IMAGE_PATH
-        self.lab_path = LABEL_PATH if dataset_type == 'train' else VAL_LABEL_PATH
-        self.edge_lab_path = EDGE_LABEL_PATH if dataset_type == 'train' else VAL_EDGELABEL_PATH
-
-        self.dataset_type = dataset_type
+    '''
+    功能：边缘损失模型数据生成器，包含img,lab,edge_lab
+    '''
+    def __init__(self, type='train'):
         self.batch_size = Batch_Size
-        self.image_names = np.array(os.listdir(self.img_path))
+        self.img_path = IMAGE_PATH if type == 'train' else VAL_IMAGE_PATH
+        self.lab_path = LABEL_PATH if type == 'train' else VAL_LABEL_PATH
+        self.edge_path = EDGE_LABEL_PATH if type == 'train' else VAL_EDGE_LABEL_PATH
 
-        self.img_nums = len(self.image_names)
-        self.soft_list = np.arange(0, self.img_nums)
-        np.random.shuffle(self.image_names)
-        self.img_arr = []
-        self.lab_arr = []
-        # self.load_data()
 
-    def __len__(self):
-        return math.ceil(self.img_nums / self.batch_size)
+        self.img_names = os.listdir(self.img_path)
+        self.img_nums = len(self.img_names)
+        self.img_names = np.array(self.img_names)
+        self.random_list = np.arange(self.img_nums)
+        np.random.shuffle(self.random_list)
 
     def __getitem__(self, item):
-        img_paths = self.image_names[self.batch_size * item : self.batch_size * (item + 1)]
-        lab_paths = self.image_names[self.batch_size * item : self.batch_size * (item + 1)]
-        len_ = len(self.image_names[self.batch_size * item : self.batch_size * (item + 1)])
-        img_tensor, lab_tensor = self.load_data(img_paths, lab_paths, len_=len_)
-        img_tensor, lab_tensor = tf.cast(img_tensor, tf.float32), tf.cast(lab_tensor, tf.float32)
+        img_name_list = self.img_names[item*self.batch_size:(item+1)*self.batch_size]
+        img_tensor = self.read_img(img_name_list)
+        lab_tensor = self.read_lab(img_name_list)
         return img_tensor, lab_tensor
+        # return img_name_list
 
-    def load_data(self, img_paths, lab_paths, len_=0):  # 自定义函数，读取数据、数据增强等 可在这里进行。
-        self.img_tensor = np.zeros((len_, Image_Size, Image_Size, 3))
+    def __len__(self):
+        return math.floor(self.img_nums / self.batch_size)
 
+    def read_img(self, img_name_list):
+        img_tensor = np.zeros((self.batch_size, IMG_H, IMG_W, 3))
+        for i in range(len(img_name_list)):
+            img = cv.imread(os.path.join(self.img_path, img_name_list[i]))
+            img_tensor[i, :, :, :] = img
+        img_tensor = img_tensor / 127.5 - 1.0
+        return img_tensor
 
-        for i in range(len_):
-            img_data = self.read_img(os.path.join(self.img_path, img_paths[i]))
-            self.img_tensor[i, :, :, :] = img_data
+    def read_lab(self, img_name_list):
+        lab_tensor = np.zeros((self.batch_size, IMG_H, IMG_W, 2))
+        for i in range(len(img_name_list)):
+            lab = cv.imread(os.path.join(self.lab_path, img_name_list[i]))
+            edge = cv.imread(os.path.join(self.edge_path, img_name_list[i]))
+            lab = cv.cvtColor(lab, cv.COLOR_BGR2GRAY)
+            edge = cv.cvtColor(edge, cv.COLOR_BGR2GRAY)
+            lab = np.reshape(lab, (IMG_H, IMG_W, 1))
+            edge = np.reshape(edge, (IMG_H, IMG_W, 1))
+            lab_tensor[i, :, :, 0:1] = lab
+            lab_tensor[i, :, :, 1:2] = edge
+        lab_tensor[:, :, :, 0:1] = lab_tensor[:, :, :, 0:1] / 255
+        return lab_tensor
 
+if __name__ == '__main__':
+    fun = Load_data(type='val')
+    for img, lab in fun:
+        print(img.shape, lab.shape)
+    labs = fun.read_lab(['val_123.png'])
+    print(labs[0].shape)
 
-        if self.dataset_type == 'train':
-            self.lab_tensor = np.zeros((len_, Image_Size, Image_Size, 2))
-            for i in range(len_):
-                lab_data = self.read_lab(os.path.join(self.lab_path, lab_paths[i]))
-                self.lab_arr = np.zeros((Image_Size, Image_Size, 2))
-                self.lab_arr[:, :, 0:1] = lab_data
-                edge_lab_data = self.read_lab(os.path.join(self.edge_lab_path, lab_paths[i]), is_edge_lab=True)
-                self.lab_arr[:, :, 1:2] = edge_lab_data
-                self.lab_tensor[i, :, :, :] = self.lab_arr
-
-        else:
-            self.lab_tensor = np.zeros((len_, Image_Size, Image_Size, 2))
-            for i in range(len_):
-                lab_data = self.read_lab(os.path.join(self.lab_path, lab_paths[i]))
-                self.lab_arr = np.zeros((Image_Size, Image_Size, 2))
-                self.lab_arr[:, :, 0:1] = lab_data
-                edge_lab_data = self.read_lab(os.path.join(self.edge_lab_path, lab_paths[i]), is_edge_lab=True)
-                self.lab_arr[:, :, 1:2] = edge_lab_data
-                self.lab_tensor[i, :, :, :] = self.lab_arr
-
-        return self.img_tensor, self.lab_tensor
-
-    def on_epoch_end(self):
-        np.random.shuffle(self.image_names)
-        # print('\033[0;37;40m on_epoch_end self.image_names = \n{}\033[0m'.format(self.image_names))
-
-
-    def read_img(self, path):
-        # print('path : ', path)
-        img = tf.io.read_file(path)
-        img = tf.image.decode_png(img, channels=3)
-        img = tf.cast(img, tf.float32)
-        img = img / 127.5 - 1
-        return img
-
-    def read_lab(self, path, is_edge_lab=False):
-        # print('path : ', path)
-
-        lab = tf.io.read_file(path)
-        lab = tf.image.decode_png(lab, channels=1)
-        if not is_edge_lab:
-            lab /= 255
-        return lab
-
+    VAL_IMAGE_PATH = 'D:/dataset/newedge/val/image'
+    VAL_LABEL_PATH = 'D:/dataset/newedge/val/label'
+    VAL_EDGE_LABEL_PATH = 'D:/dataset/newedge/val/edgelabel'
+    lab = cv.imread(os.path.join(VAL_LABEL_PATH, 'val_123.png'))
+    edge = cv.imread(os.path.join(VAL_EDGE_LABEL_PATH, 'val_123.png'))
+    lab = cv.cvtColor(lab, cv.COLOR_BGR2GRAY)
+    edge = cv.cvtColor(edge, cv.COLOR_BGR2GRAY)
+    lab = np.reshape(lab, (IMG_H, IMG_W, 1))
+    edge = np.reshape(edge, (IMG_H, IMG_W, 1))
+    print(edge, edge.shape)
+    print(labs[0, :, :, 1], labs[0, :, :, 1].shape)
+    print(np.unique(labs[0, :, :, 1:2] - edge))
